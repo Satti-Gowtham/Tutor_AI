@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  ollama:
+    build:
+      context: ./Ollama
+      dockerfile: Dockerfile
+    container_name: ollama
+    ports:
+      - 11434:11434
+    volumes:
+      - ./Ollama/ollama:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "./run-healthcheck.sh"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+
+  frontend_agent:
+    build:
+      context: ./FE
+      dockerfile: Dockerfile
+    container_name: frontend_agent
+    ports:
+      - 3000:3000
+    volumes:
+      - ./FE:/app
+      - /app/node_modules
+    env_file:
+      - ./.env
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
+  
+  python_worker:
+    build:
+      context: ./Worker
+      dockerfile: Dockerfile
+    container_name: python_worker
+    volumes:
+      - ./Worker:/app
+      - ${DB_PATH}:/app/DB
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    env_file:
+      - ./.env
+    environment:
+      - PYTHON_ENV=development
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    
+  streamlit:
+    build:
+      context: ./Loader
+      dockerfile: Dockerfile
+    container_name: streamlit_document_loader
+    ports:
+      - 8501:8501
+    volumes:
+      - ./Loader:/app
+      - ${DB_PATH}:/app/DB
+      - ./Loader/docker:/root/.streamlit
+    env_file:
+      - ./.env
+    environment:
+      - PYTHON_ENV=development
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
